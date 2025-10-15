@@ -8,8 +8,14 @@ import statsmodels.api as sm
 import streamlit as st
 
 
-def ols_with_hac(df: pd.DataFrame, y_col: str, x_cols: list[str], lags: int):
-    """Run OLS with HAC (Newey–West) covariance and return results + summary table."""
+def ols_with_hac(
+    df: pd.DataFrame,
+    y_col: str,
+    x_cols: list[str],
+    lags: int,
+    include_intercept: bool,
+):
+    """Run OLS with HAC (Newey-West) covariance and return results + summary table."""
     numeric = (
         df[[y_col] + x_cols]
         .apply(pd.to_numeric, errors="coerce")
@@ -19,7 +25,9 @@ def ols_with_hac(df: pd.DataFrame, y_col: str, x_cols: list[str], lags: int):
         raise ValueError("No rows with numeric data remain after conversion. Check your selections.")
 
     y = numeric[y_col]
-    X = sm.add_constant(numeric[x_cols])
+    X = numeric[x_cols]
+    if include_intercept:
+        X = sm.add_constant(X)
 
     ols = sm.OLS(y, X).fit()
     hac = ols.get_robustcov_results(
@@ -199,7 +207,13 @@ else:
             min_value=0,
             value=default_lag,
             step=1,
-            help="Default follows Newey–West rule of thumb. Set to 0 for no autocorrelation adjustment.",
+            help="Default follows Newey-West rule of thumb. Set to 0 for no autocorrelation adjustment.",
+        )
+
+        include_intercept = st.checkbox(
+            "Include intercept",
+            value=True,
+            help="Adds a constant column to the regression design matrix.",
         )
 
         run_regression = st.button("Run regression", type="primary")
@@ -209,10 +223,20 @@ else:
             st.error("Select at least one independent variable.")
         else:
             try:
-                _, hac_res, coef_tbl = ols_with_hac(clean, y_col, x_cols, lags)
+                _, hac_res, coef_tbl = ols_with_hac(
+                    clean,
+                    y_col,
+                    x_cols,
+                    lags,
+                    include_intercept=include_intercept,
+                )
+
+                used_rows = len(hac_res.model.endog)
+                st.caption(f"Regression fit on {used_rows} rows after numeric conversion.")
 
                 st.subheader("Regression summary (HAC)")
-                st.text(hac_res.summary().as_text())
+                summary_text = hac_res.summary().as_text()
+                st.text(summary_text)
 
                 coef_display = coef_tbl.reset_index().rename(columns={"index": "variable"})
                 st.subheader("Coefficient details")
@@ -224,6 +248,12 @@ else:
                     data=coef_csv,
                     file_name="coefficients.csv",
                     mime="text/csv",
+                )
+                st.download_button(
+                    label="Download regression summary (TXT)",
+                    data=summary_text.encode("utf-8"),
+                    file_name="regression_summary.txt",
+                    mime="text/plain",
                 )
             except ValueError as err:
                 st.error(str(err))
