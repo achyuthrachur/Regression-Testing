@@ -2,8 +2,44 @@
 
 from io import BytesIO
 
+import numpy as np
 import pandas as pd
+import statsmodels.api as sm
 import streamlit as st
+
+
+def ols_with_hac(df: pd.DataFrame, y_col: str, x_cols: list[str], lags: int):
+    """Run OLS with HAC (Newey–West) covariance and return results + summary table."""
+    numeric = (
+        df[[y_col] + x_cols]
+        .apply(pd.to_numeric, errors="coerce")
+        .dropna()
+    )
+    if numeric.empty:
+        raise ValueError("No rows with numeric data remain after conversion. Check your selections.")
+
+    y = numeric[y_col]
+    X = sm.add_constant(numeric[x_cols])
+
+    ols = sm.OLS(y, X).fit()
+    hac = ols.get_robustcov_results(
+        cov_type="HAC",
+        maxlags=lags,
+        use_correction=False,
+        use_t=True,
+    )
+
+    table = pd.DataFrame(
+        {
+            "coef": hac.params,
+            "std_err_OLS": ols.bse,
+            "std_err_HAC": hac.bse,
+            "t_HAC": hac.tvalues,
+            "p_HAC": hac.pvalues,
+        },
+        index=hac.model.exog_names,
+    )
+    return ols, hac, table
 
 
 st.set_page_config(page_title="Dataset Column Filter", page_icon="🧹", layout="wide")
@@ -140,3 +176,56 @@ st.download_button(
 )
 
 st.success("Done! Use the download buttons above to save your cleaned data.")
+
+# --- Optional regression with HAC ---
+st.markdown("### Optional: Run OLS with HAC (Newey–West) Standard Errors")
+if len(clean.columns) < 2:
+    st.info("Select at least two columns above to enable regression (one for Y, one or more for X).")
+else:
+    with st.expander("Configure regression"):
+        all_cols = clean.columns.tolist()
+        y_col = st.selectbox("Dependent variable (Y)", options=all_cols)
+        default_x = [c for c in all_cols if c != y_col]
+        x_cols = st.multiselect(
+            "Independent variable(s) (X)",
+            options=[c for c in all_cols if c != y_col],
+            default=default_x,
+        )
+
+        n_obs = len(clean)
+        default_lag = int(np.floor(4 * (n_obs / 100) ** (2 / 9)))
+        lags = st.number_input(
+            "HAC lag length",
+            min_value=0,
+            value=default_lag,
+            step=1,
+            help="Default follows Newey–West rule of thumb. Set to 0 for no autocorrelation adjustment.",
+        )
+
+        run_regression = st.button("Run regression", type="primary")
+
+    if run_regression:
+        if not x_cols:
+            st.error("Select at least one independent variable.")
+        else:
+            try:
+                _, hac_res, coef_tbl = ols_with_hac(clean, y_col, x_cols, lags)
+
+                st.subheader("Regression summary (HAC)")
+                st.text(hac_res.summary().as_text())
+
+                coef_display = coef_tbl.reset_index().rename(columns={"index": "variable"})
+                st.subheader("Coefficient details")
+                st.dataframe(coef_display, use_container_width=True)
+
+                coef_csv = coef_display.to_csv(index=False).encode("utf-8")
+                st.download_button(
+                    label="Download coefficients (CSV)",
+                    data=coef_csv,
+                    file_name="coefficients.csv",
+                    mime="text/csv",
+                )
+            except ValueError as err:
+                st.error(str(err))
+            except Exception as exc:
+                st.error(f"Regression failed: {exc}")

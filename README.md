@@ -2,7 +2,7 @@
 
 This repository contains two data-preparation tools:
 
-- `app.py` – a Streamlit web app that filters a dataset to rows with complete data across user-selected columns and provides CSV/Excel downloads.
+- `app.py` – a Streamlit web app that filters a dataset to rows with complete data across user-selected columns, offers CSV/Excel downloads, and can optionally run OLS with HAC (Newey–West) standard errors on the cleaned subset.
 - `run_ols_hac.py` – a command-line helper that runs OLS with Newey–West (HAC) standard errors to reproduce the "white" output, complete with clipboard-friendly coefficient tables.
 
 ## Local setup
