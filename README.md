@@ -1,9 +1,9 @@
-# Dataset Column Filter & HAC Regression Utilities
+# Regression Replication Toolkit
 
-This repository contains two data-preparation tools:
+This repository provides two utilities for preparing datasets and running ordinary least squares (OLS) regressions with Newey-West (HAC) standard errors.
 
-- `app.py` – a Streamlit web app that filters a dataset to rows with complete data across user-selected columns, offers CSV/Excel downloads, and can optionally run OLS with HAC (Newey-West) standard errors on the cleaned subset (with intercept and lag controls).
-- `run_ols_hac.py` – a command-line helper that runs OLS with Newey-West (HAC) standard errors to reproduce the "white" output, complete with clipboard-friendly coefficient tables.
+- `app.py` - Streamlit web application for filtering datasets, exporting cleaned data, and running interactive HAC regressions with configurable dependent and independent variables, lag length selection, and downloadable diagnostics.
+- `run_ols_hac.py` - Command-line helper that reproduces the expected HAC output and writes clipboard-friendly coefficient tables.
 
 ## Local setup
 
@@ -19,38 +19,33 @@ pip install -r requirements.txt
 streamlit run app.py
 ```
 
+Once running, upload a CSV or Excel file, choose the columns to retain, and download a cleaned dataset. The app also supports:
+
+- Selecting the dependent variable and any number of independent variables.
+- Setting the HAC lag length (defaults to the Newey-West rule of thumb).
+- Including or excluding an intercept.
+- Viewing diagnostics (R-squared, F-statistic, Durbin-Watson, Jarque-Bera, condition number, and more).
+- Downloading coefficients, diagnostics, the full regression summary, and residuals/fitted values.
+
 ### OLS + HAC script
 
 ```bash
 python run_ols_hac.py path\to\data.xlsx
 ```
 
-Omit the `path` argument to trigger a file picker. If you need to open legacy `.xls` workbooks, install `xlrd==1.2.0`.
+Omit the `path` argument to open a file picker. If you need to load legacy `.xls` workbooks, install `xlrd==1.2.0`.
 
 ## Publish to GitHub
 
-1. Initialize the repo and create the first commit:
-
-   ```bash
-   git init
-   git add .
-   git commit -m "Initial commit: Streamlit column filter and HAC utility"
-   ```
-
-2. Create a new GitHub repository (e.g., `dataset-column-filter`) and add it as a remote:
-
-   ```bash
-   git remote add origin git@github.com:<your-user>/dataset-column-filter.git
-   git push -u origin main
-   ```
-
-   Replace `git@github.com:...` with your preferred HTTPS or SSH remote URL.
+1. Initialize the repository and create the first commit.
+2. Create a new GitHub repository (for example, `regression-replication`) and add it as a remote.
+3. Push your commits to GitHub.
 
 ## Deploy on Streamlit Cloud
 
-1. Push the repository to GitHub (as described above).
+1. Push the repository to GitHub.
 2. Sign in to [streamlit.io](https://streamlit.io/cloud) and select **New app**.
-3. Choose the repository, branch (usually `main`), and set **Main file path** to `app.py`.
-4. Confirm; Streamlit Cloud will install packages from `requirements.txt` and deploy the app automatically.
+3. Choose the repository and branch, and set **Main file path** to `app.py`.
+4. Streamlit Cloud will install packages from `requirements.txt` and deploy the app automatically.
 
-You can now share the Streamlit Cloud URL with collaborators. When you push new commits to GitHub, the deployment will update automatically.
+Share the deployed URL with collaborators. New commits pushed to GitHub will trigger automatic redeploys.
