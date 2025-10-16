@@ -9,6 +9,7 @@ import pandas as pd
 import statsmodels.api as sm
 from pandas.api.types import is_string_dtype
 from statsmodels.stats.stattools import durbin_watson, jarque_bera
+import altair as alt
 import streamlit as st
 
 
@@ -47,6 +48,21 @@ def _format_value(value: object) -> str:
             return f"{value:,.4f}"
         return f"{value:.6f}"
     return str(value)
+
+
+def _flatten_columns(frame: pd.DataFrame) -> pd.DataFrame:
+    """Convert any MultiIndex columns to single-level strings."""
+    flattened = frame.copy()
+    if isinstance(flattened.columns, pd.MultiIndex):
+        flattened.columns = [
+            " ".join(part for part in map(str, col) if part.strip()) or f"col_{i}"
+            for i, col in enumerate(flattened.columns)
+        ]
+    else:
+        flattened.columns = [
+            str(col).strip() or f"col_{i}" for i, col in enumerate(flattened.columns)
+        ]
+    return flattened
 
 
 def ols_with_hac(
@@ -321,19 +337,62 @@ def main() -> None:
     st.subheader("Coefficient estimates")
     st.dataframe(coef_display, use_container_width=True)
 
+    summary = hac_res.summary2()
+    if summary.tables:
+        overview = _flatten_columns(summary.tables[0]).reset_index()
+        overview = overview.rename(columns={"index": "Metric"})
+        st.subheader("Model overview")
+        st.table(overview)
+
+        if len(summary.tables) > 2:
+            residual_table = _flatten_columns(summary.tables[2]).reset_index()
+            residual_table = residual_table.rename(columns={"index": "Statistic"})
+            st.subheader("Residual summary")
+            st.table(residual_table)
+
     summary_text = hac_res.summary().as_text()
-    st.subheader("Regression summary (text)")
-    st.text(summary_text)
+    with st.expander("Full statsmodels summary"):
+        st.code(summary_text)
+
+    predicted_col = f"predicted_{y_col}"
+    augmented = clean_data.copy()
+    augmented[predicted_col] = np.nan
+    augmented.loc[numeric_data.index, predicted_col] = hac_res.fittedvalues
 
     residuals = pd.DataFrame(
         {
             "observation": numeric_data.index,
             f"actual_{y_col}": numeric_data[y_col],
-            "fitted": hac_res.fittedvalues,
+            "predicted": hac_res.fittedvalues,
             "residual": hac_res.resid,
         }
     )
 
+    plot_source = residuals.rename(columns={"observation": "Observation"})
+    plot_source = plot_source.reset_index(drop=True)
+    plot_df = plot_source.melt(id_vars="Observation", value_vars=[f"actual_{y_col}", "predicted"], var_name="Series", value_name="Value")
+
+    chart = (
+        alt.Chart(plot_df)
+        .mark_line(point=True)
+        .encode(
+            x=alt.X("Observation:N", title="Observation"),
+            y=alt.Y("Value:Q", title=y_col),
+            color=alt.Color("Series:N", title="Series"),
+            tooltip=["Observation", "Series", "Value"],
+        )
+        .properties(height=300)
+    )
+
+    st.subheader("Actual vs. predicted")
+    st.altair_chart(chart, use_container_width=True)
+
+    st.download_button(
+        label="Download cleaned data + predictions (CSV)",
+        data=augmented.to_csv(index=False).encode("utf-8"),
+        file_name="filtered_with_predictions.csv",
+        mime="text/csv",
+    )
     st.download_button(
         label="Download diagnostics (CSV)",
         data=diag_raw.to_csv(index=False).encode("utf-8"),
